@@ -64,7 +64,7 @@ func (c *Classifier) TrainString(doc string, category string) error {
 
 // Classify attempts to classify a document. If the document cannot be classified
 // (eg. because the classifier has not been trained), an error is returned.
-func (c *Classifier) Classify(r io.Reader) (string, error) {
+func (c *Classifier) ClassifyString(s string) (string, error) {
 	max := 0.0
 	var err error
 	classification := ""
@@ -74,7 +74,7 @@ func (c *Classifier) Classify(r io.Reader) (string, error) {
 	defer c.mu.RUnlock()
 
 	for _, category := range c.categories() {
-		probabilities[category] = c.probability(r, category)
+		probabilities[category] = c.probability(asReader(s), category)
 		if probabilities[category] > max {
 			max = probabilities[category]
 			classification = category
@@ -110,11 +110,6 @@ func (c *Classifier) Probabilities(str string) (map[string]float64, string) {
 	}
 
 	return probabilities, cat
-}
-
-// ClassifyString provides convenience classification for strings
-func (c *Classifier) ClassifyString(doc string) (string, error) {
-	return c.Classify(asReader(doc))
 }
 
 func (c *Classifier) addFeature(feature string, category string) {
