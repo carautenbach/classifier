@@ -1,14 +1,15 @@
 # classifier
+
 A naive bayes text classifier.
 
-[![codecov](https://codecov.io/gh/n3integration/classifier/branch/master/graph/badge.svg)](https://codecov.io/gh/n3integration/classifier)
-[![Go Report Card](https://goreportcard.com/badge/github.com/n3integration/classifier)](https://goreportcard.com/report/github.com/n3integration/classifier)
-[![Documentation](https://godoc.org/github.com/n3integration/classifier?status.svg)](http://godoc.org/github.com/n3integration/classifier)
+[![codecov](https://codecov.io/gh/carautenbach/classifier/branch/master/graph/badge.svg)](https://codecov.io/gh/carautenbach/classifier)
+[![Go Report Card](https://goreportcard.com/badge/github.com/carautenbach/classifier)](https://goreportcard.com/report/github.com/carautenbach/classifier)
+[![Documentation](https://godoc.org/github.com/carautenbach/classifier?status.svg)](http://godoc.org/github.com/carautenbach/classifier)
 
 ## Installation
 
 ```bash
-go get github.com/n3integration/classifier
+go get github.com/carautenbach/classifier
 ```
 
 ## Usage
@@ -18,7 +19,7 @@ go get github.com/n3integration/classifier
 There are two methods of classification: `io.Reader` or `string`. To classify strings, use the `TrainString` or `ClassifyString` functions. To classify larger sources, use the `Train` and `Classify` functions that take an `io.Reader` as input.
 
 ```go
-import "github.com/n3integration/classifier/naive"
+import "github.com/carautenbach/classifier/naive"
 
 classifier := naive.New()
 classifier.TrainString("The quick brown fox jumped over the lazy dog", "ham")
@@ -42,7 +43,7 @@ if classification, err := classifier.ClassifyString("Earn your masters degree on
 
 ## License
 
-Copyright 2022 n3integration@gmail.com
+Copyright 2022 carautenbach@gmail.com
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
