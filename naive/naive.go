@@ -21,7 +21,7 @@ type Option func(c *Classifier) error
 type Classifier struct {
 	Feat2cat  map[string]map[string]int
 	CatCount  map[string]int
-	tokenizer classifier.Tokenizer
+	Tokenizer classifier.Tokenizer
 	mu        sync.RWMutex
 }
 
@@ -30,7 +30,7 @@ func New(opts ...Option) *Classifier {
 	c := &Classifier{
 		Feat2cat:  make(map[string]map[string]int),
 		CatCount:  make(map[string]int),
-		tokenizer: classifier.NewTokenizer(),
+		Tokenizer: classifier.NewTokenizer(),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -40,7 +40,7 @@ func New(opts ...Option) *Classifier {
 
 func LoadTrainingData(path string) (*Classifier, error) {
 	c := &Classifier{
-		tokenizer: classifier.NewTokenizer(),
+		Tokenizer: classifier.NewTokenizer(),
 	}
 
 	file, err := os.ReadFile(path)
@@ -77,7 +77,7 @@ func (c *Classifier) SaveTrainingData(path string) (err error) {
 // Tokenizer overrides the classifier's default Tokenizer
 func Tokenizer(t classifier.Tokenizer) Option {
 	return func(c *Classifier) error {
-		c.tokenizer = t
+		c.Tokenizer = t
 		return nil
 	}
 }
@@ -87,7 +87,7 @@ func (c *Classifier) Train(r io.Reader, category string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	for feature := range c.tokenizer.Tokenize(r) {
+	for feature := range c.Tokenizer.Tokenize(r) {
 		c.addFeature(feature, category)
 	}
 
@@ -97,7 +97,7 @@ func (c *Classifier) Train(r io.Reader, category string) error {
 
 // TrainString provides supervisory training to the classifier
 func (c *Classifier) TrainString(doc string, category string) error {
-	return c.Train(asReader(doc), category)
+	return c.Train(AsReader(doc), category)
 }
 
 // Classify attempts to classify a document. If the document cannot be classified
@@ -112,7 +112,7 @@ func (c *Classifier) ClassifyString(s string) (string, error) {
 	defer c.mu.RUnlock()
 
 	for _, category := range c.categories() {
-		probabilities[category] = c.probability(asReader(s), category)
+		probabilities[category] = c.probability(AsReader(s), category)
 		if probabilities[category] > max {
 			max = probabilities[category]
 			classification = category
@@ -137,7 +137,7 @@ func (c *Classifier) Probabilities(str string) (map[string]float64, string) {
 	cat := ``
 
 	for _, category := range c.categories() {
-		prob := c.probability(asReader(str), category)
+		prob := c.probability(AsReader(str), category)
 		if prob > 0 {
 			probabilities[category] = prob
 		}
@@ -219,12 +219,12 @@ func (c *Classifier) probability(r io.Reader, category string) float64 {
 
 func (c *Classifier) docProbability(r io.Reader, category string) float64 {
 	probability := 1.0
-	for feature := range c.tokenizer.Tokenize(r) {
+	for feature := range c.Tokenizer.Tokenize(r) {
 		probability *= c.weightedProbability(feature, category)
 	}
 	return probability
 }
 
-func asReader(text string) io.Reader {
+func AsReader(text string) io.Reader {
 	return bytes.NewBufferString(text)
 }
