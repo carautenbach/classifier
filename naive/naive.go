@@ -114,11 +114,18 @@ func (c *Classifier) Probabilities(stringToClassify string) (map[string]float64,
 
 func probabilityGrouped(c *Classifier, categories []string, features []string, totalCount float64, probabilities map[string]float64, wg *sync.WaitGroup, offset int, groupSize int, lock sync.Mutex) {
 	defer wg.Done()
+	probabilitiesForThisGroup := map[string]float64{}
 	for i := offset; i < offset+groupSize; i++ {
 		if i < len(categories) {
-			c.probability(categories, features, totalCount, categories[i])
+			probabilitiesForThisGroup[categories[i]] = c.probability(categories, features, totalCount, categories[i])
 		}
 	}
+
+	lock.Lock()
+	for key, value := range probabilitiesForThisGroup {
+		probabilities[key] = value
+	}
+	lock.Unlock()
 }
 
 func (c *Classifier) addFeature(feature string, category string) {
