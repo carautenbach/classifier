@@ -78,8 +78,12 @@ func (c *Classifier) ClassifyString(stringToClassify string) (string, error) {
 		features = append(features, feature)
 	}
 
-	for _, category := range c.categories() {
-		probabilities[category] = c.probability(features, category)
+	totalCount := float64(c.count())
+
+	categories := c.categories()
+
+	for _, category := range categories {
+		probabilities[category] = c.probability(categories, features, totalCount, category)
 		if probabilities[category] > max {
 			max = probabilities[category]
 			classification = category
@@ -108,8 +112,11 @@ func (c *Classifier) Probabilities(stringToClassify string) (map[string]float64,
 		features = append(features, feature)
 	}
 
-	for _, category := range c.categories() {
-		prob := c.probability(features, category)
+	totalCount := float64(c.count())
+	categories := c.categories()
+
+	for _, category := range categories {
+		prob := c.probability(categories, features, totalCount, category)
 		if prob > 0 {
 			probabilities[category] = prob
 		}
@@ -170,29 +177,29 @@ func (c *Classifier) featureProbability(feature string, category string) float64
 	return c.featureCount(feature, category) / c.categoryCount(category)
 }
 
-func (c *Classifier) weightedProbability(feature string, category string) float64 {
-	return c.variableWeightedProbability(feature, category, 1.0, 0.5)
+func (c *Classifier) weightedProbability(categories []string, feature string, category string) float64 {
+	return c.variableWeightedProbability(categories, feature, category, 1.0, 0.5)
 }
 
-func (c *Classifier) variableWeightedProbability(feature string, category string, weight float64, assumedProb float64) float64 {
+func (c *Classifier) variableWeightedProbability(categories []string, feature string, category string, weight float64, assumedProb float64) float64 {
 	sum := 0.0
 	probability := c.featureProbability(feature, category)
-	for _, category := range c.categories() {
+	for _, category := range categories {
 		sum += c.featureCount(feature, category)
 	}
 	return ((weight * assumedProb) + (sum * probability)) / (weight + sum)
 }
 
-func (c *Classifier) probability(features []string, category string) float64 {
-	categoryProbability := c.categoryCount(category) / float64(c.count())
-	docProbability := c.docProbability(features, category)
+func (c *Classifier) probability(categories []string, features []string, totalCount float64, category string) float64 {
+	categoryProbability := c.categoryCount(category) / totalCount
+	docProbability := c.docProbability(categories, features, category)
 	return docProbability * categoryProbability
 }
 
-func (c *Classifier) docProbability(features []string, category string) float64 {
+func (c *Classifier) docProbability(categories []string, features []string, category string) float64 {
 	probability := 1.0
 	for _, feature := range features {
-		probability *= c.weightedProbability(feature, category)
+		probability *= c.weightedProbability(categories, feature, category)
 	}
 	return probability
 }
