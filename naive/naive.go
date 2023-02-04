@@ -3,7 +3,10 @@ package naive
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
+	"math"
+	"sort"
 	"sync"
 
 	"github.com/carautenbach/classifier"
@@ -62,40 +65,6 @@ func (c *Classifier) TrainString(doc string, category string) error {
 	return c.Train(AsReader(doc), category)
 }
 
-// ClassifyString attempts to classify a document. If the document cannot be classified
-// (e.g. because the classifier has not been trained), an error is returned.
-func (c *Classifier) ClassifyString(stringToClassify string) (string, error) {
-	max := 0.0
-	var err error
-	classification := ""
-	probabilities := make(map[string]float64)
-
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	var features []string
-	for feature := range c.Tokenizer.Tokenize(AsReader(stringToClassify)) {
-		features = append(features, feature)
-	}
-
-	totalCount := float64(c.count())
-
-	categories := c.categories()
-
-	for _, category := range categories {
-		probabilities[category] = c.probability(categories, features, totalCount, category)
-		if probabilities[category] > max {
-			max = probabilities[category]
-			classification = category
-		}
-	}
-
-	if classification == "" {
-		return "", ErrNotClassified
-	}
-	return classification, err
-}
-
 // Probabilities runs the provided string through the model and returns
 // the potential probability for each classification
 func (c *Classifier) Probabilities(stringToClassify string) (map[string]float64, string) {
@@ -104,9 +73,6 @@ func (c *Classifier) Probabilities(stringToClassify string) (map[string]float64,
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	best := 0.0
-	cat := ``
-
 	var features []string
 	for feature := range c.Tokenizer.Tokenize(AsReader(stringToClassify)) {
 		features = append(features, feature)
@@ -114,19 +80,45 @@ func (c *Classifier) Probabilities(stringToClassify string) (map[string]float64,
 
 	totalCount := float64(c.count())
 	categories := c.categories()
+	numberOfGroups := 10
+	groupSize := int(math.Ceil(float64(len(categories)) / float64(numberOfGroups)))
 
-	for _, category := range categories {
-		prob := c.probability(categories, features, totalCount, category)
-		if prob > 0 {
-			probabilities[category] = prob
-		}
-		if prob > best {
-			best = prob
-			cat = category
-		}
+	var lock sync.Mutex
+	var wg sync.WaitGroup
+	wg.Add(numberOfGroups)
+
+	for i := 0; i < numberOfGroups; i++ {
+		go probabilityGrouped(c, categories, features, totalCount, probabilities, &wg, i, groupSize, lock)
 	}
 
-	return probabilities, cat
+	fmt.Println("Calculating probabilities...")
+	wg.Wait()
+
+	keys := make([]string, 0, len(probabilities))
+	for category := range probabilities {
+		keys = append(keys, category)
+	}
+
+	sort.SliceStable(keys, func(i, j int) bool {
+		return probabilities[keys[i]] > probabilities[keys[j]]
+	})
+
+	topCategory := ""
+
+	if len(keys) > 0 {
+		topCategory = keys[0]
+	}
+
+	return probabilities, topCategory
+}
+
+func probabilityGrouped(c *Classifier, categories []string, features []string, totalCount float64, probabilities map[string]float64, wg *sync.WaitGroup, offset int, groupSize int, lock sync.Mutex) {
+	defer wg.Done()
+	for i := offset; i < offset+groupSize; i++ {
+		if i < len(categories) {
+			c.probability(categories, features, totalCount, categories[i])
+		}
+	}
 }
 
 func (c *Classifier) addFeature(feature string, category string) {

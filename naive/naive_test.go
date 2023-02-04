@@ -1,105 +1,60 @@
 package naive
 
 import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
 	"testing"
+	"time"
 )
 
-var (
-	ham  = "The quick brown fox jumps over the lazy dog"
-	spam = "Earn cash quick online"
-)
-
-func TestProbability(t *testing.T) {
-	classifier := New()
-
-	t.Run(`Probabilities`, func(t *testing.T) {
-		for z := 0; z < 1; z++ {
-			classifier.TrainString(`aaa bbb ccc ddd`, "A")
-			classifier.TrainString(`111 222 333 444 zzz`, "X")
-			classifier.TrainString(`bbb ccc ddd eee`, "A")
-			classifier.TrainString(`222 333 444 555 zzz`, "X")
-			classifier.TrainString(`bbb ccc ddd eee fff`, "A")
-			classifier.TrainString(`222 333 444 555 666 zzz`, "X")
-		}
-
-		if m, _ := classifier.Probabilities(`bbb ccc ddd`); m[`A`] <= m[`X`] {
-			t.Errorf(`A=%.2f value should be greater than X=%.2f`, m[`X`], m[`A`])
-		}
-
-		if m, _ := classifier.Probabilities(`222 333 zzz`); m[`X`] <= m[`A`] {
-			t.Errorf(`X=%.2f value should be greater than A=%.2f`, m[`X`], m[`A`])
-		}
-	})
-}
-func TestAddFeature(t *testing.T) {
-	classifier := New()
-	classifier.addFeature("quick", "good")
-	assertFeatureCount(t, classifier, "quick", "good", 1.0)
-	assertFeatureCount(t, classifier, "quick", "bad", 0.0)
-	classifier.addFeature("quick", "bad")
-	assertFeatureCount(t, classifier, "quick", "bad", 1.0)
+var categories = []string{
+	"Dog", "Cat",
 }
 
-func TestAddCategory(t *testing.T) {
+func TestClassifierSimple(t *testing.T) {
 	classifier := New()
 
-	assertCategoryCount(t, classifier, "good", 0.0)
-	classifier.addCategory("good")
-	assertCategoryCount(t, classifier, "good", 1.0)
-	categories := classifier.categories()
+	classifier.TrainString("German Shepherd", "Dog")
+	classifier.TrainString("Pointer", "Dog")
+	classifier.TrainString("Black kitty", "Cat")
+	classifier.TrainString("White kitten", "Cat")
 
-	assertEqual(t, float64(classifier.count()), float64(len(categories)))
+	probabilities, topResult := classifier.Probabilities("Kitty")
+	fmt.Println(topResult)
+	fmt.Println(probabilities)
 }
 
-func TestTrain(t *testing.T) {
-	classifier := New()
+func TestClassifier(t *testing.T) {
+	f, err := os.Open("./classification_training_data.csv")
 
-	if err := classifier.TrainString(ham, "good"); err != nil {
-		t.Error("classifier training failed")
+	if err != nil {
+		panic(err)
 	}
 
-	if err := classifier.TrainString(spam, "bad"); err != nil {
-		t.Error("classifier training failed")
-	}
-
-	assertFeatureCount(t, classifier, "quick", "good", 1.0)
-	assertFeatureCount(t, classifier, "quick", "bad", 1.0)
-	assertCategoryCount(t, classifier, "good", 1)
-	assertCategoryCount(t, classifier, "bad", 1)
-}
-
-func TestClassify(t *testing.T) {
+	// Train on CSV data
 	classifier := New()
-	text := "Quick way to make cash"
+	r := csv.NewReader(f)
 
-	t.Run("Empty classifier", func(t *testing.T) {
-		if _, err := classifier.ClassifyString(text); err != ErrNotClassified {
-			t.Errorf("expected classification error; received: %v", err)
+	for {
+		record, err := r.Read()
+
+		if err == io.EOF {
+			break
 		}
-	})
 
-	t.Run("Trained classifier", func(t *testing.T) {
-		classifier.TrainString(ham, "good")
-		classifier.TrainString(spam, "bad")
-
-		if _, err := classifier.ClassifyString(text); err != nil {
-			t.Error("document incorrectly classified")
+		if err != nil {
+			panic(err)
 		}
-	})
-}
 
-func assertCategoryCount(t *testing.T, classifier *Classifier, category string, count float64) {
-	v := classifier.categoryCount(category)
-	assertEqual(t, count, v)
-}
-
-func assertFeatureCount(t *testing.T, classifier *Classifier, feature string, category string, count float64) {
-	v := classifier.featureCount(feature, category)
-	assertEqual(t, count, v)
-}
-
-func assertEqual(t *testing.T, expected, actual float64) {
-	if actual != expected {
-		t.Errorf("Expectation mismatch. Expected(%f) <=> Actual (%f)", expected, actual)
+		classifier.TrainString(record[0], record[1])
 	}
+
+	now := time.Now()
+	probabilities, topResult := classifier.Probabilities("Trade Professional - TP 6000 4S - 5.5kW 13HP 6.8kVA")
+
+	fmt.Println("Calculation took: ", time.Now().Sub(now))
+	fmt.Println(topResult)
+	fmt.Println(probabilities)
 }
