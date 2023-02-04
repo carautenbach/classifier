@@ -2,10 +2,8 @@ package naive
 
 import (
 	"bytes"
-	"encoding/gob"
 	"errors"
 	"io"
-	"os"
 	"sync"
 
 	"github.com/carautenbach/classifier"
@@ -38,42 +36,6 @@ func New(opts ...Option) *Classifier {
 	return c
 }
 
-func LoadTrainingData(path string) (*Classifier, error) {
-	c := &Classifier{
-		Tokenizer: classifier.NewTokenizer(),
-	}
-
-	file, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	dec := gob.NewDecoder(bytes.NewBuffer(file))
-	if err = dec.Decode(c); err != nil {
-		return nil, err
-	}
-
-	return c, err
-}
-
-func (c *Classifier) SaveTrainingData(path string) (err error) {
-	var network bytes.Buffer
-
-	file, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-
-	enc := gob.NewEncoder(&network)
-	err = enc.Encode(c)
-	if err != nil {
-		return err
-	}
-
-	_, err = file.Write(network.Bytes())
-	return err
-}
-
 // Tokenizer overrides the classifier's default Tokenizer
 func Tokenizer(t classifier.Tokenizer) Option {
 	return func(c *Classifier) error {
@@ -100,9 +62,9 @@ func (c *Classifier) TrainString(doc string, category string) error {
 	return c.Train(AsReader(doc), category)
 }
 
-// Classify attempts to classify a document. If the document cannot be classified
-// (eg. because the classifier has not been trained), an error is returned.
-func (c *Classifier) ClassifyString(s string) (string, error) {
+// ClassifyString attempts to classify a document. If the document cannot be classified
+// (e.g. because the classifier has not been trained), an error is returned.
+func (c *Classifier) ClassifyString(stringToClassify string) (string, error) {
 	max := 0.0
 	var err error
 	classification := ""
@@ -111,8 +73,13 @@ func (c *Classifier) ClassifyString(s string) (string, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
+	var features []string
+	for feature := range c.Tokenizer.Tokenize(AsReader(stringToClassify)) {
+		features = append(features, feature)
+	}
+
 	for _, category := range c.categories() {
-		probabilities[category] = c.probability(AsReader(s), category)
+		probabilities[category] = c.probability(features, category)
 		if probabilities[category] > max {
 			max = probabilities[category]
 			classification = category
@@ -127,7 +94,7 @@ func (c *Classifier) ClassifyString(s string) (string, error) {
 
 // Probabilities runs the provided string through the model and returns
 // the potential probability for each classification
-func (c *Classifier) Probabilities(str string) (map[string]float64, string) {
+func (c *Classifier) Probabilities(stringToClassify string) (map[string]float64, string) {
 	probabilities := make(map[string]float64)
 
 	c.mu.RLock()
@@ -136,8 +103,13 @@ func (c *Classifier) Probabilities(str string) (map[string]float64, string) {
 	best := 0.0
 	cat := ``
 
+	var features []string
+	for feature := range c.Tokenizer.Tokenize(AsReader(stringToClassify)) {
+		features = append(features, feature)
+	}
+
 	for _, category := range c.categories() {
-		prob := c.probability(AsReader(str), category)
+		prob := c.probability(features, category)
 		if prob > 0 {
 			probabilities[category] = prob
 		}
@@ -211,15 +183,15 @@ func (c *Classifier) variableWeightedProbability(feature string, category string
 	return ((weight * assumedProb) + (sum * probability)) / (weight + sum)
 }
 
-func (c *Classifier) probability(r io.Reader, category string) float64 {
+func (c *Classifier) probability(features []string, category string) float64 {
 	categoryProbability := c.categoryCount(category) / float64(c.count())
-	docProbability := c.docProbability(r, category)
+	docProbability := c.docProbability(features, category)
 	return docProbability * categoryProbability
 }
 
-func (c *Classifier) docProbability(r io.Reader, category string) float64 {
+func (c *Classifier) docProbability(features []string, category string) float64 {
 	probability := 1.0
-	for feature := range c.Tokenizer.Tokenize(r) {
+	for _, feature := range features {
 		probability *= c.weightedProbability(feature, category)
 	}
 	return probability
