@@ -13,7 +13,7 @@ var categories = []string{
 	"Dog", "Cat",
 }
 
-func TestClassifierSimple(t *testing.T) {
+func TestSimpleClassifier(t *testing.T) {
 	classifier := New()
 
 	classifier.TrainString("German Shepherd", "Dog")
@@ -52,7 +52,7 @@ func TestClassifier(t *testing.T) {
 	}
 
 	now := time.Now()
-	probabilities, topResult := classifier.Probabilities("Trade Professional - TP 6000 4S - 5.5kW 13HP 6.8kVA")
+	probabilities, topResult := classifier.Probabilities("Lace bra")
 
 	fmt.Println("Calculation took: ", time.Now().Sub(now))
 	fmt.Println(topResult)

@@ -14,13 +14,3 @@ type Classifier interface {
 	// ClassifyString performs text classification using a string
 	ClassifyString(string) (string, error)
 }
-
-// WordCounts extracts term frequencies from a text corpus
-func WordCounts(r io.Reader) (map[string]int, error) {
-	instream := NewTokenizer().Tokenize(r)
-	wc := make(map[string]int)
-	for token := range instream {
-		wc[token] = wc[token] + 1
-	}
-	return wc, nil
-}

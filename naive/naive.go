@@ -2,7 +2,6 @@ package naive
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -11,12 +10,6 @@ import (
 
 	"github.com/carautenbach/classifier"
 )
-
-// ErrNotClassified indicates that a document could not be classified
-var ErrNotClassified = errors.New("unable to classify document")
-
-// Option provides a functional setting for the Classifier
-type Option func(c *Classifier) error
 
 // Classifier implements a naive bayes classifier
 type Classifier struct {
@@ -27,24 +20,13 @@ type Classifier struct {
 }
 
 // New initializes a new naive Classifier using the standard tokenizer
-func New(opts ...Option) *Classifier {
+func New() *Classifier {
 	c := &Classifier{
 		Feat2cat:  make(map[string]map[string]int),
 		CatCount:  make(map[string]int),
 		Tokenizer: classifier.NewTokenizer(),
 	}
-	for _, opt := range opts {
-		opt(c)
-	}
 	return c
-}
-
-// Tokenizer overrides the classifier's default Tokenizer
-func Tokenizer(t classifier.Tokenizer) Option {
-	return func(c *Classifier) error {
-		c.Tokenizer = t
-		return nil
-	}
 }
 
 // Train provides supervisory training to the classifier
@@ -52,21 +34,21 @@ func (c *Classifier) Train(r io.Reader, category string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	for feature := range c.Tokenizer.Tokenize(r) {
-		c.addFeature(feature, category)
+	for word := range c.Tokenizer.Tokenize(r) {
+		c.addWord(word, category)
 	}
 
-	c.addCategory(category)
+	c.CatCount[category]++
 	return nil
 }
 
 // TrainString provides supervisory training to the classifier
-func (c *Classifier) TrainString(doc string, category string) error {
-	return c.Train(AsReader(doc), category)
+func (c *Classifier) TrainString(title string, category string) error {
+	return c.Train(AsReader(title), category)
 }
 
 // Probabilities runs the provided string through the model and returns
-// the potential probability for each classification
+// the potential probabilityForCategory for each classification
 func (c *Classifier) Probabilities(stringToClassify string) (map[string]float64, string) {
 	probabilities := make(map[string]float64)
 
@@ -78,9 +60,8 @@ func (c *Classifier) Probabilities(stringToClassify string) (map[string]float64,
 		features = append(features, feature)
 	}
 
-	totalCount := float64(c.count())
-	categories := c.categories()
-	numberOfGroups := 10
+	categories := c.getAllCategories()
+	numberOfGroups := 1
 	groupSize := int(math.Ceil(float64(len(categories)) / float64(numberOfGroups)))
 
 	var lock sync.Mutex
@@ -88,7 +69,7 @@ func (c *Classifier) Probabilities(stringToClassify string) (map[string]float64,
 	wg.Add(numberOfGroups)
 
 	for i := 0; i < numberOfGroups; i++ {
-		go probabilityGrouped(c, categories, features, totalCount, probabilities, &wg, i, groupSize, lock)
+		go probabilityGrouped(c, categories, features, probabilities, &wg, i, groupSize, lock)
 	}
 
 	fmt.Println("Calculating probabilities...")
@@ -112,12 +93,15 @@ func (c *Classifier) Probabilities(stringToClassify string) (map[string]float64,
 	return probabilities, topCategory
 }
 
-func probabilityGrouped(c *Classifier, categories []string, features []string, totalCount float64, probabilities map[string]float64, wg *sync.WaitGroup, offset int, groupSize int, lock sync.Mutex) {
+func probabilityGrouped(c *Classifier, categories []string, words []string, probabilities map[string]float64, wg *sync.WaitGroup, offset int, groupSize int, lock sync.Mutex) {
 	defer wg.Done()
 	probabilitiesForThisGroup := map[string]float64{}
 	for i := offset; i < offset+groupSize; i++ {
 		if i < len(categories) {
-			probabilitiesForThisGroup[categories[i]] = c.probability(categories, features, totalCount, categories[i])
+			probability := c.probabilityForCategory(categories, words, categories[i])
+			if probability > 0 {
+				probabilitiesForThisGroup[categories[i]] = probability
+			}
 		}
 	}
 
@@ -128,32 +112,28 @@ func probabilityGrouped(c *Classifier, categories []string, features []string, t
 	lock.Unlock()
 }
 
-func (c *Classifier) addFeature(feature string, category string) {
-	if _, ok := c.Feat2cat[feature]; !ok {
-		c.Feat2cat[feature] = make(map[string]int)
+func (c *Classifier) addWord(word string, category string) {
+	if _, ok := c.Feat2cat[word]; !ok {
+		c.Feat2cat[word] = make(map[string]int)
 	}
-	c.Feat2cat[feature][category]++
+	c.Feat2cat[word][category]++
 }
 
-func (c *Classifier) featureCount(feature string, category string) float64 {
-	if _, ok := c.Feat2cat[feature]; ok {
-		return float64(c.Feat2cat[feature][category])
+func (c *Classifier) countOfWordInCategory(word string, category string) float64 {
+	if _, ok := c.Feat2cat[word]; ok {
+		return float64(c.Feat2cat[word][category])
 	}
 	return 0.0
 }
 
-func (c *Classifier) addCategory(category string) {
-	c.CatCount[category]++
-}
-
-func (c *Classifier) categoryCount(category string) float64 {
+func (c *Classifier) totalCountInCategory(category string) float64 {
 	if _, ok := c.CatCount[category]; ok {
 		return float64(c.CatCount[category])
 	}
 	return 0.0
 }
 
-func (c *Classifier) count() int {
+func (c *Classifier) countOfAllResults() int {
 	sum := 0
 	for _, value := range c.CatCount {
 		sum += value
@@ -161,7 +141,7 @@ func (c *Classifier) count() int {
 	return sum
 }
 
-func (c *Classifier) categories() []string {
+func (c *Classifier) getAllCategories() []string {
 	var keys []string
 	for k := range c.CatCount {
 		keys = append(keys, k)
@@ -169,36 +149,33 @@ func (c *Classifier) categories() []string {
 	return keys
 }
 
-func (c *Classifier) featureProbability(feature string, category string) float64 {
-	if c.categoryCount(category) == 0 {
+func (c *Classifier) probabilityOfWordInCategory(feature string, category string) float64 {
+	if c.totalCountInCategory(category) == 0 {
 		return 0.0
 	}
-	return c.featureCount(feature, category) / c.categoryCount(category)
+	return c.countOfWordInCategory(feature, category) / c.totalCountInCategory(category)
 }
 
-func (c *Classifier) weightedProbability(categories []string, feature string, category string) float64 {
-	return c.variableWeightedProbability(categories, feature, category, 1.0, 0.5)
-}
-
-func (c *Classifier) variableWeightedProbability(categories []string, feature string, category string, weight float64, assumedProb float64) float64 {
-	sum := 0.0
-	probability := c.featureProbability(feature, category)
+func (c *Classifier) weightedProbability(categories []string, word string, category string) float64 {
+	totalCountOfWordInAllCategories := 0.0
+	probability := c.probabilityOfWordInCategory(word, category)
 	for _, category := range categories {
-		sum += c.featureCount(feature, category)
+		totalCountOfWordInAllCategories += c.countOfWordInCategory(word, category)
 	}
-	return ((weight * assumedProb) + (sum * probability)) / (weight + sum)
+	weighedProbability := (totalCountOfWordInAllCategories * probability) / (1 + totalCountOfWordInAllCategories)
+	return weighedProbability
 }
 
-func (c *Classifier) probability(categories []string, features []string, totalCount float64, category string) float64 {
-	categoryProbability := c.categoryCount(category) / totalCount
-	docProbability := c.docProbability(categories, features, category)
-	return docProbability * categoryProbability
+func (c *Classifier) probabilityForCategory(categories []string, features []string, category string) float64 {
+	totalCountInCategory := c.totalCountInCategory(category)
+	docProbability := c.probabilityOfEachWordForCategory(categories, features, category)
+	return docProbability * totalCountInCategory
 }
 
-func (c *Classifier) docProbability(categories []string, features []string, category string) float64 {
+func (c *Classifier) probabilityOfEachWordForCategory(categories []string, words []string, category string) float64 {
 	probability := 1.0
-	for _, feature := range features {
-		probability *= c.weightedProbability(categories, feature, category)
+	for _, word := range words {
+		probability *= c.weightedProbability(categories, word, category)
 	}
 	return probability
 }
