@@ -60,6 +60,7 @@ func (c *Classifier) Probabilities(stringToClassify string) (map[string]float64,
 		features = append(features, feature)
 	}
 
+	totalCount := c.countOfAllResults()
 	categories := c.getAllCategories()
 	numberOfGroups := 1
 	groupSize := int(math.Ceil(float64(len(categories)) / float64(numberOfGroups)))
@@ -69,7 +70,7 @@ func (c *Classifier) Probabilities(stringToClassify string) (map[string]float64,
 	wg.Add(numberOfGroups)
 
 	for i := 0; i < numberOfGroups; i++ {
-		go probabilityGrouped(c, categories, features, probabilities, &wg, i, groupSize, lock)
+		go probabilityGrouped(c, categories, features, probabilities, float64(totalCount), &wg, i, groupSize, lock)
 	}
 
 	fmt.Println("Calculating probabilities...")
@@ -93,12 +94,12 @@ func (c *Classifier) Probabilities(stringToClassify string) (map[string]float64,
 	return probabilities, topCategory
 }
 
-func probabilityGrouped(c *Classifier, categories []string, words []string, probabilities map[string]float64, wg *sync.WaitGroup, offset int, groupSize int, lock sync.Mutex) {
+func probabilityGrouped(c *Classifier, categories []string, words []string, probabilities map[string]float64, totalCount float64, wg *sync.WaitGroup, offset int, groupSize int, lock sync.Mutex) {
 	defer wg.Done()
 	probabilitiesForThisGroup := map[string]float64{}
 	for i := offset; i < offset+groupSize; i++ {
 		if i < len(categories) {
-			probability := c.probabilityForCategory(categories, words, categories[i])
+			probability := c.probabilityForCategory(words, categories[i], totalCount)
 			if probability > 0 {
 				probabilitiesForThisGroup[categories[i]] = probability
 			}
@@ -126,6 +127,7 @@ func (c *Classifier) countOfWordInCategory(word string, category string) float64
 	return 0.0
 }
 
+// p (category)
 func (c *Classifier) totalCountInCategory(category string) float64 {
 	if _, ok := c.CatCount[category]; ok {
 		return float64(c.CatCount[category])
@@ -149,35 +151,56 @@ func (c *Classifier) getAllCategories() []string {
 	return keys
 }
 
-func (c *Classifier) probabilityOfWordInCategory(feature string, category string) float64 {
-	if c.totalCountInCategory(category) == 0 {
-		return 0.0
-	}
-	return c.countOfWordInCategory(feature, category) / c.totalCountInCategory(category)
-}
-
-func (c *Classifier) weightedProbability(categories []string, word string, category string) float64 {
-	totalCountOfWordInAllCategories := 0.0
-	probability := c.probabilityOfWordInCategory(word, category)
-	for _, category := range categories {
-		totalCountOfWordInAllCategories += c.countOfWordInCategory(word, category)
-	}
-	weighedProbability := (totalCountOfWordInAllCategories * probability) / (1 + totalCountOfWordInAllCategories)
-	return weighedProbability
-}
-
-func (c *Classifier) probabilityForCategory(categories []string, features []string, category string) float64 {
+func (c *Classifier) probabilityOfWordInCategory(word string, category string) float64 {
 	totalCountInCategory := c.totalCountInCategory(category)
-	docProbability := c.probabilityOfEachWordForCategory(categories, features, category)
-	return docProbability * totalCountInCategory
+	countOfWordInCategory := c.countOfWordInCategory(word, category)
+	probability := countOfWordInCategory / totalCountInCategory
+	return probability
 }
 
-func (c *Classifier) probabilityOfEachWordForCategory(categories []string, words []string, category string) float64 {
+func (c *Classifier) probabilityOfWordInTotalWords(word string, totalCount float64) float64 {
+	return c.wordCount(word) / totalCount
+}
+
+func (c *Classifier) probabilityForCategory(words []string, category string, totalCount float64) float64 {
+	//fmt.Println("")
+	//fmt.Println("Category: ", category)
+	wordProbability := c.probabilityOfEachWordForCategory(words, category, totalCount)
+	categoryProbability := c.probabilityOfCategory(category, totalCount)
+	probability := wordProbability * categoryProbability
+
+	//fmt.Println("Category probability: ", categoryProbability)
+	//fmt.Println("Probability: ", probability)
+	return probability
+}
+
+func (c *Classifier) wordCount(word string) float64 {
+	if _, ok := c.Feat2cat[word]; ok {
+		sum := 0
+		for _, count := range c.Feat2cat[word] {
+			sum += count
+		}
+		return float64(sum)
+	}
+	return 0.0
+}
+
+// p (document | category)
+func (c *Classifier) probabilityOfEachWordForCategory(words []string, category string, totalCount float64) float64 {
 	probability := 1.0
 	for _, word := range words {
-		probability *= c.weightedProbability(categories, word, category)
+		probabilityOfWordInCategory := c.probabilityOfWordInCategory(word, category)
+		probabilityOfWordInTotalWords := c.probabilityOfWordInTotalWords(word, totalCount)
+		//fmt.Println("Word in cat probability: ", probabilityOfWordInCategory)
+		//fmt.Println("Word probability: ", probabilityOfWordInTotalWords)
+		probability *= probabilityOfWordInCategory / probabilityOfWordInTotalWords
 	}
 	return probability
+}
+
+// p (category)
+func (c *Classifier) probabilityOfCategory(category string, totalCount float64) float64 {
+	return c.totalCountInCategory(category) / totalCount
 }
 
 func AsReader(text string) io.Reader {

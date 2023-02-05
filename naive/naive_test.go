@@ -20,8 +20,35 @@ func TestSimpleClassifier(t *testing.T) {
 	classifier.TrainString("Pointer", "Dog")
 	classifier.TrainString("Black kitty", "Cat")
 	classifier.TrainString("White kitten", "Cat")
+	classifier.TrainString("White kitty", "Cat")
+	classifier.TrainString("Guppy kitty", "Fish")
+	classifier.TrainString("Guppy king", "Fish")
 
-	probabilities, topResult := classifier.Probabilities("Kitty")
+	probabilities, topResult := classifier.Probabilities("Kitty white")
+	fmt.Println(topResult)
+	fmt.Println(probabilities)
+}
+
+// https://medium.com/analytics-vidhya/how-naive-bayes-algorithm-work-d53e0a13a364
+func TestWeatherClassifier(t *testing.T) {
+	classifier := New()
+
+	classifier.TrainString("Sunny", "No")
+	classifier.TrainString("Sunny", "No")
+	classifier.TrainString("Overcast", "Yes")
+	classifier.TrainString("Rainy", "Yes")
+	classifier.TrainString("Rainy", "Yes")
+	classifier.TrainString("Rainy", "No")
+	classifier.TrainString("Overcast", "Yes")
+	classifier.TrainString("Sunny", "No")
+	classifier.TrainString("Sunny", "Yes")
+	classifier.TrainString("Rainy", "Yes")
+	classifier.TrainString("Sunny", "Yes")
+	classifier.TrainString("Overcast", "Yes")
+	classifier.TrainString("Overcast", "Yes")
+	classifier.TrainString("Rainy", "No")
+
+	probabilities, topResult := classifier.Probabilities("Overcast")
 	fmt.Println(topResult)
 	fmt.Println(probabilities)
 }
@@ -52,9 +79,9 @@ func TestClassifier(t *testing.T) {
 	}
 
 	now := time.Now()
-	probabilities, topResult := classifier.Probabilities("Lace bra")
+	probabilities, topResult := classifier.Probabilities("Veldskoen")
 
 	fmt.Println("Calculation took: ", time.Now().Sub(now))
-	fmt.Println(topResult)
+	fmt.Printf("%s: %f", topResult, probabilities[topResult])
 	fmt.Println(probabilities)
 }
